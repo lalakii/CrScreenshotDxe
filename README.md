@@ -3,6 +3,14 @@ UEFI DXE driver to take screenshots from GOP-compatible graphic consoles.
 
 [This blog post in Russian](http://habrahabr.ru/post/274463/) explains more, here is just a description and usage.
 
+## Features
+
+Screenshot shortcuts: RightCtrl + F12
+
+Screenshots are saved in C:\Windows.
+
+Requires ntfsdxe driver: https://github.com/pbatard/uefi-ntfs
+
 ## Description
 This DXE driver tries to register keyboard shortcut (LCtrl + LAlt + F12) handler for all text input devices. The handler tries to find a writable FS, enumerates all GOP-capable video devices, takes screenshots from them and saves the result as PNG files on that writable FS.
 
