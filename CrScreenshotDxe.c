@@ -26,13 +26,14 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Library/DebugLib.h>
 #include <Library/PrintLib.h>
 #include <Library/UefiDriverEntryPoint.h>
+#include <Library/BmpSupportLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Protocol/GraphicsOutput.h>
 #include <Protocol/SimpleTextInEx.h>
 #include <Protocol/SimpleFileSystem.h>
 #include <Library/RngLib.h>
-#include "lodepng.h" //PNG encoding library
+// #include "lodepng.h" //PNG encoding library
 
 EFI_STATUS
 EFIAPI
@@ -158,7 +159,6 @@ ShowStatus(
   return EFI_SUCCESS;
 }
 
-
 EFI_STATUS
 EFIAPI
 TakeScreenshot(
@@ -213,15 +213,16 @@ TakeScreenshot(
 
       // Get current time
       Status = gRT->GetTime(&Time, NULL);
-      if (!EFI_ERROR(Status)) {
-        // Set file name to current day and time
-        UnicodeSPrint(FileName, 50, L"%04d%02d%02d%02d%02d%02d.png", Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
-      }
-      else {
+
+      if (EFI_ERROR(Status)) {
         // Set file name to screenshot_%random%.png
         UINT32 randomNumber;
         GetRandomNumber32(&randomNumber);
-        UnicodeSPrint(FileName, 50, L"screenshot_%07d.png", randomNumber);
+        UnicodeSPrint(FileName, 50, L"screenshot_%07d.BMP", randomNumber);
+      }
+      else {
+        // Set file name to current day and time
+        UnicodeSPrint(FileName, 50, L"%04d%02d%02d%02d%02d%02d.BMP", Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
       }
 
       // Allocate memory for screenshot
@@ -256,24 +257,32 @@ TakeScreenshot(
         break;
       }
 
-      // Convert BGR to RGBA with Alpha set to 0xFF
       for (j = 0; j < ImageSize; j++) {
-        UINT8 Temp = Image[j].Blue;
-        Image[j].Blue = Image[j].Red;
-        Image[j].Red = Temp;
-        Image[j].Reserved = 0xFF;
+        if (Image[j].Red != 0x00 ||
+          Image[j].Green != 0x00 ||
+          Image[j].Blue != 0x00) {
+          break;
+        }
       }
 
-      // Encode raw RGB image to PNG format
-      j = lodepng_encode32(&PngFile, &PngFileSize, (CONST UINT8*)Image, ScreenWidth, ScreenHeight);
-      if (j) {
-        DEBUG((-1, "TakeScreenshot: lodepng_encode32 returned %d\n", j));
+      Status = TranslateGopBltToBmp(Image, ScreenHeight, ScreenWidth,
+        &PngFile, (UINT32*)&PngFileSize);
+
+      if (EFI_ERROR(Status)) {
+        DEBUG((-1, "TakeScreenshot: TranslateGopBltToBmp returned %d\n", Status));
+        break;
+      }
+
+      UINT32 Crc;
+      Status = gBS->CalculateCrc32(&PngFile, PngFileSize, &Crc);
+      if (EFI_ERROR(Status)) {
         break;
       }
 
       // Write PNG image into the file and close it
       Status = File->Write(File, &PngFileSize, PngFile);
       File->Close(File);
+
       if (EFI_ERROR(Status)) {
         DEBUG((-1, "TakeScreenshot: File->Write returned %r\n", Status));
         break;
@@ -309,7 +318,7 @@ CrScreenshotDxeEntry(
 {
   EFI_STATUS   Status;
   EFI_KEY_DATA KeyStroke;
-  UINTN        HandleCount;
+  UINTN        HandleCount = 0;
   EFI_HANDLE* HandleBuffer = NULL;
   UINTN        i;
 

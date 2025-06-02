@@ -3,14 +3,11 @@
   BASE_NAME                      = CrScreenshotDxe
   FILE_GUID                      = cab058df-e938-4f85-8978-1f7e6aabdb96
   MODULE_TYPE                    = DXE_DRIVER
-  VERSION_STRING                 = 1.1
+  VERSION_STRING                 = 1.2
   ENTRY_POINT                    = CrScreenshotDxeEntry
 
 [Sources.common]
   CrScreenshotDxe.c
-  lodepng.h
-  lodepng.c
-  qsort.c
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -23,6 +20,7 @@
   DebugLib
   PrintLib
   RngLib
+  BmpSupportLib
 
 [Protocols]
   gEfiGraphicsOutputProtocolGuid
