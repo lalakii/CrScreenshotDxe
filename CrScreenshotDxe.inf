@@ -3,7 +3,7 @@
   BASE_NAME                      = CrScreenshotDxe
   FILE_GUID                      = cab058df-e938-4f85-8978-1f7e6aabdb96
   MODULE_TYPE                    = DXE_DRIVER
-  VERSION_STRING                 = 1.2
+  VERSION_STRING                 = 1.3
   ENTRY_POINT                    = CrScreenshotDxeEntry
 
 [Sources.common]
@@ -32,4 +32,4 @@
   gEfiSimpleTextInputExProtocolGuid
 
 [BuildOptions]
-  MSFT:*_*_*_CC_FLAGS            = /GL- /Oi- /wd4244 /wd4267 /wd4334 /wd4245
+  MSFT:*_*_*_CC_FLAGS            = /GL- /wd4244 /wd4267 /wd4334 /wd4245

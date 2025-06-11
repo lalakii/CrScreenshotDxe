@@ -33,7 +33,6 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Protocol/SimpleTextInEx.h>
 #include <Protocol/SimpleFileSystem.h>
 #include <Library/RngLib.h>
-// #include "lodepng.h" //PNG encoding library
 
 EFI_STATUS
 EFIAPI
@@ -43,7 +42,7 @@ FindWritableFs(
 {
   EFI_HANDLE* HandleBuffer = NULL;
   UINTN      HandleCount;
-  UINTN      i;
+  UINT8      i;
 
   // Locate all the simple file system devices in the system
   EFI_STATUS Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &HandleCount, &HandleBuffer);
@@ -117,7 +116,7 @@ ShowStatus(
   EFI_GRAPHICS_OUTPUT_PROTOCOL* GraphicsOutput = NULL;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL Square[STATUS_SQUARE_SIDE * STATUS_SQUARE_SIDE];
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL Backup[STATUS_SQUARE_SIDE * STATUS_SQUARE_SIDE];
-  UINTN i;
+  UINT8 i;
 
   // Locate all instances of GOP
   EFI_STATUS Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiGraphicsOutputProtocolGuid, NULL, &HandleCount, &HandleBuffer);
@@ -167,32 +166,31 @@ TakeScreenshot(
 {
   EFI_FILE_PROTOCOL* Fs = NULL;
   EFI_FILE_PROTOCOL* File = NULL;
+  EFI_FILE_PROTOCOL* PublicDir = NULL;
   EFI_GRAPHICS_OUTPUT_PROTOCOL* GraphicsOutput = NULL;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL* Image = NULL;
-  UINTN      ImageSize;         // Size in pixels
   UINT8* PngFile = NULL;
-  UINTN      PngFileSize;       // Size in bytes
+  // Size in pixels
+  UINTN      ImageSize, PngFileSize, HandleCount, j;       // Size in bytes
   EFI_STATUS Status;
-  UINTN      HandleCount;
   EFI_HANDLE* HandleBuffer = NULL;
-  UINT32     ScreenWidth;
-  UINT32     ScreenHeight;
-  CHAR16     FileName[50]; // 0-terminated 8.3 file name
+  UINT16     ScreenWidth, ScreenHeight;
+  CHAR16     FileName[40];
   EFI_TIME   Time;
-  UINTN      i, j;
+  UINT8      i;
+
+  // Locate all instances of GOP
+  Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiGraphicsOutputProtocolGuid, NULL, &HandleCount, &HandleBuffer);
+  if (EFI_ERROR(Status)) {
+    DEBUG((-1, "ShowStatus: Graphics output protocol not found\n"));
+    return EFI_SUCCESS;
+  }
 
   // Find writable FS
   Status = FindWritableFs(&Fs);
   if (EFI_ERROR(Status)) {
     DEBUG((-1, "TakeScreenshot: Can't find writable FS\n"));
     ShowStatus(0xFF, 0xFF, 0x00); //Yellow
-    return EFI_SUCCESS;
-  }
-
-  // Locate all instances of GOP
-  Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiGraphicsOutputProtocolGuid, NULL, &HandleCount, &HandleBuffer);
-  if (EFI_ERROR(Status)) {
-    DEBUG((-1, "ShowStatus: Graphics output protocol not found\n"));
     return EFI_SUCCESS;
   }
 
@@ -210,19 +208,17 @@ TakeScreenshot(
       ScreenWidth = GraphicsOutput->Mode->Info->HorizontalResolution;
       ScreenHeight = GraphicsOutput->Mode->Info->VerticalResolution;
       ImageSize = ScreenWidth * ScreenHeight;
-
-      // Get current time
-      Status = gRT->GetTime(&Time, NULL);
+      Status = gRT->GetTime(&Time, NULL); // Get current time
 
       if (EFI_ERROR(Status)) {
         // Set file name to screenshot_%random%.png
         UINT32 randomNumber;
         GetRandomNumber32(&randomNumber);
-        UnicodeSPrint(FileName, 50, L"screenshot_%07d.BMP", randomNumber);
+        UnicodeSPrint(FileName, 40, L"Screenshot_%04x.BMP", randomNumber & 0xFFFF);
       }
       else {
         // Set file name to current day and time
-        UnicodeSPrint(FileName, 50, L"%04d%02d%02d%02d%02d%02d.BMP", Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
+        UnicodeSPrint(FileName, 40, L"%04d%02d%02d_%02d%02d%02d.BMP", Time.Year, Time.Month, Time.Day, Time.Hour, Time.Minute, Time.Second);
       }
 
       // Allocate memory for screenshot
@@ -241,47 +237,43 @@ TakeScreenshot(
 
       // Check for pitch black image (it means we are using a wrong GOP)
       for (j = 0; j < ImageSize; j++) {
-        if (Image[j].Red != 0x00 || Image[j].Green != 0x00 || Image[j].Blue != 0x00)
+        if (Image[j].Red != 0x00 || Image[j].Green != 0x00 || Image[j].Blue != 0x00) {
           break;
+        }
       }
+
       if (j == ImageSize) {
         DEBUG((-1, "TakeScreenshot: GraphicsOutput->Blt returned pitch black image, skipped\n"));
         ShowStatus(0x00, 0x00, 0xFF); //Blue
         break;
       }
 
-      // Open or create output file
-      Status = Fs->Open(Fs, &File, FileName, EFI_FILE_MODE_CREATE | EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0);
-      if (EFI_ERROR(Status)) {
-        DEBUG((-1, "TakeScreenshot: Fs->Open of %s returned %r\n", FileName, Status));
-        break;
-      }
-
-      for (j = 0; j < ImageSize; j++) {
-        if (Image[j].Red != 0x00 ||
-          Image[j].Green != 0x00 ||
-          Image[j].Blue != 0x00) {
-          break;
-        }
-      }
-
-      Status = TranslateGopBltToBmp(Image, ScreenHeight, ScreenWidth,
-        &PngFile, (UINT32*)&PngFileSize);
+      // Gop to BMP
+      Status = TranslateGopBltToBmp(Image, ScreenHeight, ScreenWidth, &PngFile, (UINT32*)&PngFileSize);
 
       if (EFI_ERROR(Status)) {
         DEBUG((-1, "TakeScreenshot: TranslateGopBltToBmp returned %d\n", Status));
         break;
       }
 
-      UINT32 Crc;
-      Status = gBS->CalculateCrc32(&PngFile, PngFileSize, &Crc);
+      // Open C:\Users\Public\Pictures
+      Status = Fs->Open(Fs, &PublicDir, L"Users\\Public\\Pictures\\", EFI_FILE_MODE_READ, 0);
       if (EFI_ERROR(Status)) {
+        DEBUG((-1, "TakeScreenshot: Fs->Open of Public dir returned %r\n", Status));
+        break;
+      }
+
+      // Open or create output file
+      Status = PublicDir->Open(PublicDir, &File, FileName, EFI_FILE_MODE_CREATE | EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0);
+      if (EFI_ERROR(Status)) {
+        DEBUG((-1, "TakeScreenshot: Fs->Open of %s returned %r\n", FileName, Status));
         break;
       }
 
       // Write PNG image into the file and close it
       Status = File->Write(File, &PngFileSize, PngFile);
       File->Close(File);
+      PublicDir->Close(PublicDir);
 
       if (EFI_ERROR(Status)) {
         DEBUG((-1, "TakeScreenshot: File->Write returned %r\n", Status));
@@ -293,21 +285,25 @@ TakeScreenshot(
     } while (0);
 
     // Free memory
-    if (Image)
+    if (Image) {
       gBS->FreePool(Image);
-    if (PngFile)
-      gBS->FreePool(PngFile);
+    }
+
     Image = NULL;
+    if (PngFile) {
+      gBS->FreePool(PngFile);
+    }
+
     PngFile = NULL;
   }
 
   // Show error
-  if (EFI_ERROR(Status))
+  if (EFI_ERROR(Status)) {
     ShowStatus(0xFF, 0x00, 0x00); //Red
+  }
 
   return EFI_SUCCESS;
 }
-
 
 EFI_STATUS
 EFIAPI
@@ -316,11 +312,11 @@ CrScreenshotDxeEntry(
   IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
+  UINT8        i;
   EFI_STATUS   Status;
   EFI_KEY_DATA KeyStroke;
   UINTN        HandleCount = 0;
   EFI_HANDLE* HandleBuffer = NULL;
-  UINTN        i;
 
   // Set keystroke to be RCtrl + F12
   KeyStroke.Key.ScanCode = SCAN_F12;
@@ -348,19 +344,16 @@ CrScreenshotDxeEntry(
     }
 
     // Register key notification function
-    Status = SimpleTextInEx->RegisterKeyNotify(
-      SimpleTextInEx,
-      &KeyStroke,
-      TakeScreenshot,
-      &Handle);
+    Status = SimpleTextInEx->RegisterKeyNotify(SimpleTextInEx, &KeyStroke, TakeScreenshot, &Handle);
     if (EFI_ERROR(Status)) {
       DEBUG((-1, "CrScreenshotDxeEntry: SimpleTextInEx->RegisterKeyNotify[%d] returned %r\n", i, Status));
     }
   }
 
   // Free memory used for handle buffer
-  if (HandleBuffer)
+  if (HandleBuffer) {
     gBS->FreePool(HandleBuffer);
+  }
 
   // Show success
   ShowStatus(0xFF, 0xFF, 0xFF); //White
