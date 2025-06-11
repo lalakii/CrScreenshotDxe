@@ -7,7 +7,7 @@ UEFI DXE driver to take screenshots from GOP-compatible graphic consoles.
 
 Screenshot shortcuts: RightCtrl + F12
 
-Screenshots are saved in C:\ drive
+Screenshots are saved in C:\Users\Public\Pictures
 
 Requires ntfsdxe driver: https://github.com/pbatard/uefi-ntfs
 
