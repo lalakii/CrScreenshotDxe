@@ -3,34 +3,35 @@
   BASE_NAME                      = CrScreenshotDxe
   FILE_GUID                      = cab058df-e938-4f85-8978-1f7e6aabdb96
   MODULE_TYPE                    = DXE_DRIVER
-  VERSION_STRING                 = 1.0
+  VERSION_STRING                 = 2.0
   ENTRY_POINT                    = CrScreenshotDxeEntry
 
 [Sources.common]
   CrScreenshotDxe.c
-  lodepng.h
-  lodepng.c
 
 [Packages]
   MdePkg/MdePkg.dec
   MdeModulePkg/MdeModulePkg.dec
 
 [LibraryClasses]
-  UefiBootServicesTableLib
   UefiRuntimeServicesTableLib
   UefiDriverEntryPoint
-  DebugLib
+  BmpSupportLib
   PrintLib
+  RngLib
+  MemoryAllocationLib
+  UefiLib
 
 [Protocols]
+  gEfiHiiFontProtocolGuid
   gEfiGraphicsOutputProtocolGuid
-  gEfiSimpleTextInputExProtocolGuid
   gEfiSimpleFileSystemProtocolGuid
+  gEfiSimpleTextInputExProtocolGuid
 
 [Depex]
+  gEfiHiiFontProtocolGuid AND
   gEfiGraphicsOutputProtocolGuid AND
   gEfiSimpleTextInputExProtocolGuid
 
 [BuildOptions]
-  MSFT:*_*_*_CC_FLAGS            = /wd4244 /wd4267 /wd4334 /wd4245
-  *_*_*_CC_FLAGS                 = -D LODEPNG_UEFI_MODE
+  MSFT:*_*_*_CC_FLAGS            = /O2
