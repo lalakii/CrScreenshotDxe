@@ -371,7 +371,7 @@ CrScreenshotDxeEntry(
   EFI_KEY_DATA KeyStroke;
   UINTN HandleCount = 0;
   EFI_HANDLE *HandleBuffer = NULL;
-  // Set keystroke to be RCtrl + F12
+  // Set keystroke to be RCtrl + LEFT
   KeyStroke.Key.ScanCode = SCAN_LEFT;
   KeyStroke.Key.UnicodeChar = 0;
   KeyStroke.KeyState.KeyToggleState = 0;
